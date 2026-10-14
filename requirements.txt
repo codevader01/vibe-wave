@@ -1,0 +1,9 @@
+# Verified target: Python 3.12, Kivy 2.3.1 (latest stable 2.3.x on Windows).
+# KivyMD is intentionally not pinned. KivyMD 1.x follows Material widgets that
+# fight this layout, and KivyMD 2.x is still an unstable API on this Kivy line.
+kivy==2.3.1
+mutagen>=1.47.0
+numpy>=1.26.0
+scipy>=1.11.0
+sounddevice>=0.4.6
+Pillow>=10.0.0
