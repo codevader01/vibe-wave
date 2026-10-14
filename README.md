@@ -49,7 +49,7 @@ Clone the repository and run the application using a virtual environment:
 
 ```powershell
 # Navigate to the project directory
-cd C:\Users\samuel\VibeWave
+cd VibeWave
 
 # Install requirements
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
