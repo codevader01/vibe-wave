@@ -7,7 +7,7 @@ from kivy.graphics import Color, Rectangle
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.behaviors import ButtonBehavior
-from kivy.uix.widget import Widget
+from kivy.uix.floatlayout import FloatLayout
 
 from vibewave.formatutil import format_duration
 from vibewave.ui.widgets import IconButton, PrettySlider, SpectrumBars, VWLabel, WaveformSeek, theme, watch_theme
@@ -51,7 +51,7 @@ class PlayerBar(BoxLayout):
         from vibewave.ui.widgets import CoverImage
 
         self.art = CoverImage(size_hint=(None, None), size=(dp(48), dp(48)), radius=dp(10))
-        self.identity = _Identity(spacing=dp(10), size_hint_x=0.36)
+        self.identity = _Identity(spacing=dp(10), size_hint=(None, None), size=(dp(280), dp(52)))
         self.identity.add_widget(self.art)
         self.identity.add_widget(text_col)
         self.identity.bind(on_release=lambda *_: self._open_now())
@@ -71,34 +71,35 @@ class PlayerBar(BoxLayout):
         ):
             button.bind(on_release=lambda *_, fn=handler: fn())
 
-        center = BoxLayout(size_hint_x=0.30, spacing=dp(4))
-        center.add_widget(Widget())
+        self.center_box = BoxLayout(size_hint=(None, None), size=(dp(236), dp(52)), spacing=dp(4))
         for button in (self.shuffle_btn, self.prev_btn, self.play_btn, self.next_btn, self.repeat_btn):
-            center.add_widget(button)
-        center.add_widget(Widget())
+            self.center_box.add_widget(button)
 
         self.volume_btn = IconButton(icon="volume")
         self.volume_btn.bind(on_release=lambda *_: self._mute())
         self.volume = PrettySlider(size_hint=(None, None), size=(dp(110), dp(28)), min_value=0, max_value=1, value=0.85)
         self.volume.changed = self._volume
-        self.spectrum = SpectrumBars(count=12, size_hint=(None, None), size=(dp(86), dp(32)))
+        self.spectrum = SpectrumBars(count=12, size_hint=(None, None), size=(dp(64), dp(28)))
         self.queue_btn = IconButton(icon="queue")
         self.expand_btn = IconButton(icon="expand")
         self.queue_btn.bind(on_release=lambda *_: self._queue())
         self.expand_btn.bind(on_release=lambda *_: self._open_now())
 
-        right = BoxLayout(size_hint_x=0.34, spacing=dp(4))
-        right.add_widget(Widget())
-        right.add_widget(self.spectrum)
-        right.add_widget(self.volume_btn)
-        right.add_widget(self.volume)
-        right.add_widget(self.queue_btn)
-        right.add_widget(self.expand_btn)
+        self.right_box = BoxLayout(size_hint=(None, None), size=(dp(300), dp(42)), spacing=dp(4))
+        self.right_box.add_widget(self.spectrum)
+        self.right_box.add_widget(self.volume_btn)
+        self.right_box.add_widget(self.volume)
+        self.right_box.add_widget(self.queue_btn)
+        self.right_box.add_widget(self.expand_btn)
 
-        row = BoxLayout(spacing=dp(8))
+        row = FloatLayout()
+        self.identity.pos_hint = {"x": 0, "center_y": 0.5}
+        self.center_box.pos_hint = {"center_x": 0.5, "center_y": 0.5}
+        self.right_box.pos_hint = {"right": 1, "center_y": 0.5}
         row.add_widget(self.identity)
-        row.add_widget(center)
-        row.add_widget(right)
+        row.add_widget(self.center_box)
+        row.add_widget(self.right_box)
+        self.bind(size=self._fit)
         self.add_widget(seek_row)
         self.add_widget(row)
         self.bind(pos=self._paint, size=self._paint)
@@ -106,6 +107,18 @@ class PlayerBar(BoxLayout):
         from kivy.clock import Clock
 
         Clock.schedule_once(self._bind, 0)
+
+    def _fit(self, *_args):
+        width = self.width
+        center = dp(236)
+        side = max(dp(150), (width - center) / 2 - dp(16))
+        show_spec = side >= dp(270)
+        spec = dp(64) if show_spec else 0
+        self.spectrum.width = spec
+        self.spectrum.opacity = 1 if show_spec else 0
+        self.center_box.width = center
+        self.right_box.width = spec + dp(42) + dp(110) + dp(42) + dp(42) + dp(20)
+        self.identity.width = side
 
     def _bind(self, *_args):
         player = _player()

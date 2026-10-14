@@ -16,9 +16,11 @@ from kivy.properties import BooleanProperty, ListProperty, NumericProperty, Obje
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
+from kivy.effects.scroll import ScrollEffect
 from kivy.uix.recycleboxlayout import RecycleBoxLayout
 from kivy.uix.recycleview import RecycleView
 from kivy.uix.recycleview.views import RecycleDataViewBehavior
+from kivy.uix.scrollview import ScrollView
 from kivy.uix.textinput import TextInput
 from kivy.uix.widget import Widget
 
@@ -78,6 +80,29 @@ def pointer_inside(widget, win_pos) -> bool:
 
 def mix(a, b, amount: float):
     return tuple(a[i] + (b[i] - a[i]) * amount for i in range(4))
+
+
+class DesktopScroll(ScrollView):
+    """Desktop scroller. A horizontal strip lets vertical wheel events pass upward."""
+
+    def __init__(self, horizontal: bool = False, **kwargs):
+        kwargs.setdefault("effect_cls", ScrollEffect)
+        kwargs.setdefault("do_scroll_x", horizontal)
+        kwargs.setdefault("do_scroll_y", not horizontal)
+        kwargs.setdefault("bar_width", 0 if horizontal else dp(8))
+        kwargs.setdefault("bar_margin", dp(2))
+        kwargs.setdefault("scroll_type", ["content"] if horizontal else ["bars", "content"])
+        kwargs.setdefault("smooth_scroll_end", 0)
+        kwargs.setdefault("bar_color", (0.62, 0.55, 1, 0.95))
+        kwargs.setdefault("bar_inactive_color", (1, 1, 1, 0.34))
+        kwargs.setdefault("scroll_wheel_distance", dp(72))
+        super().__init__(**kwargs)
+
+    def on_scroll_start(self, touch, check_children=True):
+        button = getattr(touch, "button", "") or ""
+        if self.do_scroll_x and not self.do_scroll_y and button in ("scrollup", "scrolldown"):
+            return False
+        return super().on_scroll_start(touch, check_children)
 
 
 class VWLabel(Label):
@@ -208,16 +233,6 @@ class VWButton(ButtonBehavior, BoxLayout):
         inside = pointer_inside(self, pos)
         if inside != self.hover:
             self.hover = inside
-            if inside:
-                try:
-                    Window.set_system_cursor("hand")
-                except Exception:
-                    pass
-            else:
-                try:
-                    Window.set_system_cursor("arrow")
-                except Exception:
-                    pass
 
     def redraw(self, *_args):
         self.canvas.before.clear()
@@ -494,7 +509,7 @@ class VWTextInput(TextInput):
             background_color=(0, 0, 0, 0),
             foreground_color=(1, 1, 1, 1),
             cursor_color=(0.7, 0.6, 1, 1),
-            padding=(dp(12), dp(10)),
+            padding=(dp(4), dp(9), dp(4), dp(9)),
             **kwargs,
         )
         self.bind(focus=self._focus)
@@ -614,7 +629,7 @@ class SpectrumBars(Widget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._levels = [0.0] * int(self.count)
-        self._clock = Clock.schedule_interval(self._tick, 1 / 30)
+        self._clock = Clock.schedule_interval(self._tick, 1 / 15)
         self.bind(count=self._reset, pos=self._draw, size=self._draw)
 
     def _reset(self, *_args):
@@ -783,11 +798,11 @@ class TrackRow(RecycleDataViewBehavior, BoxLayout):
             self.add_widget(widget)
         self.bind(
             pos=self._paint,
-            size=self._paint,
+            size=self._fit_columns,
             selected=self._paint,
             hover=self._paint,
             favorite=self._fav,
-            show_album=self._album,
+            show_album=self._fit_columns,
         )
         Window.bind(mouse_pos=self._mouse)
         watch_theme(self, self._paint)
@@ -801,14 +816,20 @@ class TrackRow(RecycleDataViewBehavior, BoxLayout):
         self.album_l.text = self.album_text
         self.duration_l.text = self.duration_text
         self.plays_l.text = self.plays_text
-        self._album()
+        self._fit_columns()
         self._fav()
         return result
 
-    def _album(self, *_args):
-        self.album_l.opacity = 1 if self.show_album else 0
-        self.album_l.size_hint_x = 0.22 if self.show_album else 0
-        self.album_l.width = 0 if not self.show_album else self.album_l.width
+    def _fit_columns(self, *_args):
+        show_album = bool(self.show_album) and self.width >= dp(820)
+        show_plays = self.width >= dp(620)
+        self.album_l.opacity = 1 if show_album else 0
+        self.album_l.size_hint_x = 0.26 if show_album else 0
+        self.album_l.width = dp(8) if show_album else 0
+        self.plays_l.opacity = 1 if show_plays else 0
+        self.plays_l.width = dp(40) if show_plays else 0
+        self.artist_l.size_hint_x = 0.28
+        self.title_l.size_hint_x = 1
 
     def _fav(self, *_args):
         colors = theme()
@@ -846,6 +867,9 @@ class TrackRow(RecycleDataViewBehavior, BoxLayout):
     def on_touch_down(self, touch):
         if not self.collide_point(*touch.pos):
             return False
+        button = getattr(touch, "button", "") or ""
+        if button.startswith("scroll"):
+            return False
         if self.fav_wrap.collide_point(*touch.pos):
             app = App.get_running_app()
             if app and app.player and self.track_id:
@@ -856,13 +880,15 @@ class TrackRow(RecycleDataViewBehavior, BoxLayout):
             browser = self._browser()
             App.get_running_app().root.open_track_menu(int(self.track_id), browser.ids if browser else [], int(self.item_id))
             return True
-        if touch.is_double_tap:
+        if touch.button == "left" and self.track_id:
             browser = self._browser()
             ids = browser.ids if browser else [int(self.track_id)]
-            App.get_running_app().player.play_ids(ids, int(self.track_id), user_skip=True)
-            return True
-        if self.parent:
-            return self.parent.select_with_touch(self.index, touch)
+            app = App.get_running_app()
+            if app and app.player:
+                app.player.play_ids(ids, int(self.track_id), user_skip=True)
+        parent = self.parent
+        if parent is not None and hasattr(parent, "select_with_touch"):
+            return parent.select_with_touch(self.index, touch)
         return True
 
 
@@ -875,19 +901,49 @@ class TrackList(BoxLayout):
         self.show_album = show_album
         self.ids_list: list[int] = []
         self.empty = VWLabel(text="No songs to show", role="small", muted=True, halign="center", size_hint_y=None, height=dp(48))
-        self.rv = RecycleView(bar_width=dp(6), scroll_type=["bars", "content"])
-        layout = RecycleBoxLayout(
+        self.header = BoxLayout(size_hint_y=None, height=dp(22), padding=(dp(8), 0), spacing=dp(8))
+        self._head_num = VWLabel(text="#", role="micro", faint=True, size_hint_x=None, width=dp(36), halign="right")
+        self._head_title = VWLabel(text="Title", role="micro", faint=True)
+        self._head_artist = VWLabel(text="Artist", role="micro", faint=True, size_hint_x=0.28)
+        self._head_album = VWLabel(text="Album", role="micro", faint=True, size_hint_x=0.26)
+        self._head_time = VWLabel(text="Time", role="micro", faint=True, size_hint_x=None, width=dp(62), halign="right")
+        self._head_plays = VWLabel(text="Plays", role="micro", faint=True, size_hint_x=None, width=dp(40), halign="right")
+        self._head_fav = Widget(size_hint_x=None, width=dp(36))
+        for widget in (
+            self._head_num,
+            self._head_title,
+            self._head_artist,
+            self._head_album,
+            self._head_time,
+            self._head_plays,
+            self._head_fav,
+        ):
+            self.header.add_widget(widget)
+        self.rv = RecycleView(
+            bar_width=dp(8),
+            bar_margin=dp(2),
+            bar_color=(0.62, 0.55, 1, 0.95),
+            bar_inactive_color=(1, 1, 1, 0.34),
+            scroll_type=["bars", "content"],
+            do_scroll_x=False,
+            smooth_scroll_end=0,
+            scroll_wheel_distance=dp(72),
+            effect_cls=ScrollEffect,
+        )
+        self.layout = RecycleBoxLayout(
             default_size=(None, dp(54)),
             default_size_hint=(1, None),
             size_hint_y=None,
+            height=0,
             orientation="vertical",
             spacing=dp(2),
         )
-        layout.bind(minimum_height=layout.setter("height"))
-        self.rv.add_widget(layout)
+        self.rv.add_widget(self.layout)
         # viewclass is stored on the layout. Setting it before the layout exists drops it.
         self.rv.viewclass = "TrackRow"
+        self.add_widget(self.header)
         self.add_widget(self.rv)
+        self.bind(size=self._fit_header)
         self.add_widget(self.empty)
         self.empty.opacity = 0
 
@@ -912,14 +968,31 @@ class TrackList(BoxLayout):
                 "favorite": bool(track.get("favorite")),
                 "show_album": self.show_album,
             })
+        count = len(data)
+        self.layout.height = count * dp(54) + max(0, count - 1) * self.layout.spacing if count else 0
         self.rv.data = data
+        if count:
+            self.rv.scroll_y = 1
         has_rows = bool(data)
+        self.header.opacity = 1 if has_rows else 0
+        self.header.height = dp(22) if has_rows else 0
         self.empty.opacity = 0 if has_rows else 1
         self.empty.height = 0 if has_rows else dp(48)
         self.rv.opacity = 1 if has_rows else 0
         self.rv.size_hint_y = 1 if has_rows else None
         if not has_rows:
             self.rv.height = 0
+        self._fit_header()
+
+    def _fit_header(self, *_args):
+        width = self.width
+        show_album = self.show_album and width >= dp(820)
+        show_plays = width >= dp(620)
+        self._head_album.opacity = 1 if show_album else 0
+        self._head_album.size_hint_x = 0.26 if show_album else 0
+        self._head_album.width = dp(8) if show_album else 0
+        self._head_plays.opacity = 1 if show_plays else 0
+        self._head_plays.width = dp(40) if show_plays else 0
 
     def patch_stats(self, stats: dict) -> None:
         changed = False

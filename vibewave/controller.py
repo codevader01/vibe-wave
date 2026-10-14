@@ -476,6 +476,8 @@ class PlayerController(EventDispatcher):
         self._begin_session()
         gain = float(track.get("replaygain_db") or 0)
         self.engine.load(track["path"], float(track.get("duration") or 0), gain, autoplay=autoplay)
+        if autoplay:
+            self.playing = True
         self._save_session()
         self._request_artwork_extras(track)
 

@@ -7,12 +7,12 @@ from kivy.graphics import Color, RoundedRectangle
 from kivy.metrics import dp
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.behaviors import ButtonBehavior
-from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
 from vibewave.ui.widgets import (
     Chip,
     CoverImage,
+    DesktopScroll,
     Panel,
     VWButton,
     VWLabel,
@@ -32,7 +32,7 @@ def root():
 
 
 def page_scroll():
-    scroll = ScrollView(bar_width=dp(6), scroll_type=["bars", "content"], do_scroll_x=False)
+    scroll = DesktopScroll()
     body = BoxLayout(
         orientation="vertical",
         size_hint_y=None,
@@ -74,7 +74,7 @@ def play_tracks(tracks: list[dict], *, start: dict | None = None, shuffle: bool 
 
 
 def chip_scroller(pairs: list[tuple[str, str]], selected: str, on_pick):
-    scroller = ScrollView(do_scroll_y=False, size_hint_y=None, height=dp(42), bar_width=0)
+    scroller = DesktopScroll(horizontal=True, size_hint_y=None, height=dp(42), bar_width=0)
     row = BoxLayout(orientation="horizontal", size_hint=(None, None), height=dp(34), spacing=dp(8))
     row.bind(minimum_width=row.setter("width"))
     chips = []
@@ -89,13 +89,7 @@ def chip_scroller(pairs: list[tuple[str, str]], selected: str, on_pick):
 
 
 def hstrip(widgets: list, height: float):
-    scroller = ScrollView(
-        do_scroll_y=False,
-        size_hint_y=None,
-        height=height,
-        bar_width=0,
-        scroll_type=["content"],
-    )
+    scroller = DesktopScroll(horizontal=True, size_hint_y=None, height=height, bar_width=0)
     row = BoxLayout(
         orientation="horizontal",
         size_hint=(None, None),

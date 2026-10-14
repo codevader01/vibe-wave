@@ -13,8 +13,7 @@ from kivy.metrics import dp
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
-from kivy.uix.screenmanager import FadeTransition, ScreenManager
-from kivy.uix.scrollview import ScrollView
+from kivy.uix.screenmanager import NoTransition, ScreenManager
 from kivy.uix.widget import Widget
 
 from vibewave.ui.files import pick_directory
@@ -23,7 +22,7 @@ from vibewave.ui.now_playing import NowPlaying
 from vibewave.ui.overlays import ContextMenu, Modal, QueuePanel, Toast
 from vibewave.ui.player_bar import PlayerBar
 from vibewave.ui.sound import SOUND_SCREENS
-from vibewave.ui.widgets import Icon, IconButton, SearchField, VWButton, VWLabel, pointer_inside, radii, theme, watch_theme
+from vibewave.ui.widgets import DesktopScroll, Icon, IconButton, SearchField, VWButton, VWLabel, pointer_inside, radii, theme, watch_theme
 from kivy.clock import Clock
 from kivy.graphics import RoundedRectangle
 
@@ -157,7 +156,7 @@ class Sidebar(BoxLayout):
                 button = NavButton(screen, text, icon)
                 nav.add_widget(button)
                 self.buttons.append(button)
-        scroll = ScrollView(do_scroll_x=False, bar_width=dp(3))
+        scroll = DesktopScroll()
         scroll.add_widget(nav)
         self.add_widget(scroll)
         self._mark = mark
@@ -205,7 +204,7 @@ class Sidebar(BoxLayout):
 class Header(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(size_hint_y=None, height=dp(64), padding=(dp(22), dp(12)), spacing=dp(12), **kwargs)
-        self.title = VWLabel(text="Home", role="title", size_hint_x=None, width=dp(220))
+        self.title = VWLabel(text="Home", role="title", size_hint_x=None, width=dp(140), shorten=False)
         self.search = SearchField()
         self.search.size_hint_x = 1
         self.search.size_hint_y = None
@@ -234,6 +233,7 @@ class Header(BoxLayout):
 
     def set_title(self, text: str):
         self.title.text = text
+        self.title.width = min(dp(280), max(dp(108), dp(12.5) * len(text) + dp(8)))
 
     def set_scan(self, snap: dict, count: int):
         if snap.get("running"):
@@ -269,7 +269,7 @@ class Shell(FloatLayout):
         watch_theme(self, self._paint)
         self.sidebar = Sidebar()
         self.header = Header()
-        self.manager = ScreenManager(transition=FadeTransition(duration=0.16))
+        self.manager = ScreenManager(transition=NoTransition())
         self.pages = {}
         for cls in (*LIBRARY_SCREENS, *SOUND_SCREENS):
             screen = cls()

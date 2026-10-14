@@ -9,7 +9,6 @@ from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.screenmanager import Screen
-from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
 from vibewave.constants import SORT_OPTIONS
@@ -27,7 +26,7 @@ from vibewave.ui.kit import (
 )
 from vibewave.ui.kit import app as running_app
 from vibewave.ui.kit import root as shell
-from vibewave.ui.widgets import CoverImage, EmptyState, Icon, IconButton, Panel, TrackList, VWButton, VWLabel
+from vibewave.ui.widgets import CoverImage, DesktopScroll, EmptyState, Icon, IconButton, Panel, TrackList, VWButton, VWLabel
 
 
 def _db():
@@ -159,17 +158,17 @@ class HomeScreen(Screen):
             greet = "Good evening"
         self.body.add_widget(VWLabel(text=greet, role="display", size_hint_y=None, height=dp(40)))
         stats = database.library_stats()
-        pills = BoxLayout(size_hint_y=None, height=dp(74), spacing=dp(10))
-        for value, label in (
-            (str(stats["tracks"]), "Songs"),
-            (str(stats["albums"]), "Albums"),
-            (str(stats["artists"]), "Artists"),
-            (str(int(stats["plays"])), "Plays"),
-            (format_listen_time(stats["listen"]), "Listened"),
-        ):
-            pills.add_widget(StatPill(value, label))
-        pills.add_widget(Widget())
-        self.body.add_widget(pills)
+        pills = [
+            StatPill(value, label)
+            for value, label in (
+                (str(stats["tracks"]), "Songs"),
+                (str(stats["albums"]), "Albums"),
+                (str(stats["artists"]), "Artists"),
+                (str(int(stats["plays"])), "Plays"),
+                (format_listen_time(stats["listen"]), "Listened"),
+            )
+        ]
+        self.body.add_widget(hstrip(pills, dp(90)))
 
         recent = database.query_tracks(sort="date_added", limit=12)
         if recent:
@@ -747,17 +746,29 @@ class AlbumScreen(Screen):
         play_tracks(_db().album_tracks(self.artist_name, self.album_name), shuffle=shuffle)
 
 
+class _Hit(ButtonBehavior, BoxLayout):
+    def __init__(self, icon: str, title: str, subtitle: str, on_open, **kwargs):
+        super().__init__(orientation="horizontal", size_hint_y=None, height=dp(48), spacing=dp(10), padding=(dp(4), 0), **kwargs)
+        mark = Icon(name=icon, size_hint=(None, None), size=(dp(18), dp(18)))
+        text = BoxLayout(orientation="vertical", padding=(0, dp(6)))
+        text.add_widget(VWLabel(text=title, role="body", size_hint_y=None, height=dp(20)))
+        text.add_widget(VWLabel(text=subtitle, role="micro", muted=True, size_hint_y=None, height=dp(16)))
+        self.add_widget(mark)
+        self.add_widget(text)
+        self.bind(on_release=lambda *_: on_open())
+
+
 class SearchScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(name="search", **kwargs)
         self.query = ""
         self.banner = VWLabel(text="Search", role="small", muted=True, size_hint_y=None, height=dp(22))
-        self.hit_scroll = ScrollView(size_hint_y=None, height=0, do_scroll_x=False, bar_width=dp(4))
-        self.hits = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(6))
+        self.hit_scroll = DesktopScroll(size_hint_y=None, height=0)
+        self.hits = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(2))
         self.hits.bind(minimum_height=self.hits.setter("height"))
         self.hit_scroll.add_widget(self.hits)
         self.tracks = TrackList()
-        layout = BoxLayout(orientation="vertical", padding=(dp(22), dp(12), dp(22), dp(8)), spacing=dp(8))
+        layout = BoxLayout(orientation="vertical", padding=(dp(22), dp(8), dp(22), dp(8)), spacing=dp(8))
         layout.add_widget(self.banner)
         layout.add_widget(self.hit_scroll)
         layout.add_widget(self.tracks)
@@ -768,31 +779,39 @@ class SearchScreen(Screen):
 
     def refresh(self):
         query = (self.query or "").strip()
-        self.banner.text = f"Results for “{query}”" if query else "Search"
         self.hits.clear_widgets()
         if not query:
+            self.banner.text = "Type in the search field"
             self.tracks.set_rows([])
             self.hit_scroll.height = 0
             return
-        artists = _db().artists(search=query)[:8]
-        albums = _db().albums(search=query)[:8]
+        artists = _db().artists(search=query)[:6]
+        albums = _db().albums(search=query)[:6]
         for row in artists:
-            button = VWButton(text=row["artist"] or "Unknown Artist", icon="person", kind="ghost")
-            button.size_hint = (None, None)
-            button.width = dp(280)
-            button.bind(on_release=lambda *_, name=row.get("artist") or "": shell().open_artist(name))
-            self.hits.add_widget(button)
-        for row in albums:
-            label = f"{row.get('album')} — {row.get('artist')}"
-            button = VWButton(text=label, icon="album", kind="ghost")
-            button.size_hint = (None, None)
-            button.width = dp(360)
-            button.bind(
-                on_release=lambda *_, artist=row.get("artist") or "", album=row.get("album") or "": shell().open_album(artist, album)
+            name = row.get("artist") or "Unknown Artist"
+            self.hits.add_widget(
+                _Hit(
+                    "person",
+                    name,
+                    f"{int(row.get('track_count') or 0)} songs",
+                    lambda name=name: shell().open_artist(name),
+                )
             )
-            self.hits.add_widget(button)
-        self.hit_scroll.height = 0 if not (artists or albums) else min(dp(180), dp(8) + (len(artists) + len(albums)) * dp(44))
+        for row in albums:
+            artist = row.get("artist") or ""
+            album = row.get("album") or "Unknown Album"
+            self.hits.add_widget(
+                _Hit(
+                    "album",
+                    album,
+                    artist or "Album",
+                    lambda artist=artist, album=album: shell().open_album(artist, album),
+                )
+            )
+        hit_count = len(artists) + len(albums)
+        self.hit_scroll.height = 0 if hit_count == 0 else min(dp(196), hit_count * dp(50))
         rows = _db().query_tracks(search=query, sort="title")
+        self.banner.text = f"{len(rows)} songs for “{query}”"
         self.tracks.set_rows(rows)
         self.tracks.empty.text = "No songs match that search."
 

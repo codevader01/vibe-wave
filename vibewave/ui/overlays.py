@@ -13,10 +13,9 @@ from kivy.metrics import dp
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
-from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 
-from vibewave.ui.widgets import IconButton, Panel, VWButton, VWLabel, VWTextInput, radii, theme, watch_theme
+from vibewave.ui.widgets import DesktopScroll, IconButton, Panel, VWButton, VWLabel, VWTextInput, radii, theme, watch_theme
 
 
 def _player():
@@ -105,7 +104,7 @@ class QueuePanel(BoxLayout):
         close.bind(on_release=lambda *_: self.hide())
         header.add_widget(clear)
         header.add_widget(close)
-        self.scroll = ScrollView(bar_width=dp(4), do_scroll_x=False)
+        self.scroll = DesktopScroll()
         self.rows = BoxLayout(orientation="vertical", size_hint_y=None, spacing=dp(4))
         self.rows.bind(minimum_height=self.rows.setter("height"))
         self.scroll.add_widget(self.rows)

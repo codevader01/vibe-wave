@@ -136,6 +136,11 @@ class AudioEngine:
         self._spec_peak = 1e-3
         self.level = 0.0
         self._capacity = 44100
+        # Latest audible block. The FFT runs when the UI asks, not in the
+        # PortAudio callback. An FFT there holds the GIL and makes playback late.
+        self._meter = np.zeros((2048, 2), dtype=np.float32)
+        self._meter_n = 0
+        self._meter_lock = threading.Lock()
 
     def start(self) -> bool:
         if not ffmpeg_path():
@@ -147,7 +152,7 @@ class AudioEngine:
             device = sd.query_devices(kind="output")
             rate = int(device.get("default_samplerate") or 44100)
             self.sample_rate = rate if rate >= 8000 else 44100
-            self._capacity = max(self.sample_rate, int(self.sample_rate * 1.5))
+            self._capacity = max(self.sample_rate, int(self.sample_rate * 0.8))
             self._running = True
             self._thread = threading.Thread(target=self._loop, name="vibewave-decode", daemon=True)
             self._thread.start()
@@ -156,6 +161,7 @@ class AudioEngine:
                 channels=2,
                 dtype="float32",
                 blocksize=1024,
+                latency=0.08,
                 callback=self._callback,
             )
             self._stream.start()
@@ -249,7 +255,19 @@ class AudioEngine:
             return bool(self.playing)
 
     def spectrum_copy(self) -> np.ndarray:
+        with self._meter_lock:
+            count = self._meter_n
+            block = self._meter[:count].copy() if count >= 64 else None
         with self._state:
+            playing = self.playing
+        if block is None or not playing:
+            with self._state:
+                self._spectrum *= 0.82
+                return self._spectrum.copy()
+        bars = band_energies(block, self.sample_rate, _BARS)
+        with self._state:
+            self._spec_peak = max(float(bars.max()), self._spec_peak * 0.992, 1e-3)
+            self._spectrum = np.clip(bars / self._spec_peak, 0, 1)
             return self._spectrum.copy()
 
     def output_level(self) -> float:
@@ -365,10 +383,16 @@ class AudioEngine:
         with self._state:
             self._slot = slot
             self.duration = duration
-            self.fade = 0.0 if autoplay else 1.0
-            self.fade_target = 1.0 if autoplay else 0.0
+            # Start at full level. A fade-in here is heard as the file loading late.
+            if autoplay:
+                self.fade = 1.0
+                self.fade_target = 1.0
+                self.playing = True
+            else:
+                self.fade = 0.0
+                self.fade_target = 0.0
+                self.playing = False
             self._pause_when_faded = False
-            self.playing = bool(autoplay)
             self._hold = False
         if slot.eof and slot.ring.count == 0:
             self.messages.put(("error", "This file did not produce any audio."))
@@ -452,11 +476,11 @@ class AudioEngine:
             self.fade_target = 0.0
 
     def _prefill(self, slot: _Slot) -> None:
-        deadline = time.time() + 0.45
-        target = int(self.sample_rate * 0.12)
+        deadline = time.time() + 0.16
+        target = int(self.sample_rate * 0.05)
         while time.time() < deadline and not slot.eof and slot.ring.count < target:
             if not self._fill(slot):
-                time.sleep(0.008)
+                time.sleep(0.004)
 
     def _fill(self, slot: _Slot | None) -> bool:
         if slot is None or slot.decoder is None or slot.eof:
@@ -519,7 +543,6 @@ class AudioEngine:
             outdata.fill(0)
             with self._state:
                 self.level *= 0.9
-                self._spectrum *= 0.85
             return
 
         audio, got = slot.ring.read(frames)
@@ -557,7 +580,7 @@ class AudioEngine:
         outdata[:] = audio
 
         playhead += got
-        self._measure(dry_for_meter)
+        self._stash_meter(dry_for_meter)
 
         finished = False
         if duration_n and playhead >= duration_n:
@@ -615,12 +638,13 @@ class AudioEngine:
             ramp = np.maximum(ramp, np.float32(target))
         return ramp, float(ramp[-1])
 
-    def _measure(self, audio: np.ndarray) -> None:
-        if audio.size == 0:
+    def _stash_meter(self, audio: np.ndarray) -> None:
+        count = min(len(audio), self._meter.shape[0])
+        if count <= 0:
             return
-        rms = float(np.sqrt(np.mean(np.square(audio, dtype=np.float64))))
-        bars = band_energies(audio, self.sample_rate, _BARS)
+        with self._meter_lock:
+            self._meter[:count] = audio[:count]
+            self._meter_n = count
+        level = float(np.max(np.abs(audio)))
         with self._state:
-            self.level = min(1.0, self.level * 0.65 + min(1.0, rms * 3.5) * 0.35)
-            self._spec_peak = max(float(bars.max()), self._spec_peak * 0.995, 1e-3)
-            self._spectrum = np.clip(bars / self._spec_peak, 0, 1)
+            self.level = min(1.0, self.level * 0.55 + min(1.0, level) * 0.45)
