@@ -52,10 +52,10 @@ Clone the repository and run the application using a virtual environment:
 cd VibeWave
 
 # Install requirements
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+ pip install -r requirements.txt
 
 # Launch VibeWave
-.\.venv\Scripts\python.exe main.py
+python3 main.py
 ```
 
 On your first launch, VibeWave will prompt you to select your music folders. The application operates in strict isolation—files outside of these chosen directories are never scanned.
@@ -103,7 +103,7 @@ The scoring algorithm lives in `vibewave/recommend.py` (under `WEIGHTS`). It mat
 Run the core unit test suite:
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest tests.test_core -v
+python -m unittest tests.test_core -v
 ```
 
 **Developer Flags:**
