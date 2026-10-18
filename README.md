@@ -98,14 +98,6 @@ VibeWave builds a profile of your tastes over time. A "play" is registered only 
 
 The scoring algorithm lives in `vibewave/recommend.py` (under `WEIGHTS`). It mathematically balances your listening time, recency, ratings, and track affinity to serve fresh queues—all processed instantly on your local CPU.
 
-## 🧪 Testing & Development
-
-Run the core unit test suite:
-
-```powershell
-python -m unittest tests.test_core -v
-```
-
 **Developer Flags:**
 
 - `VIBEWAVE_DEMO=1`: Seeds a lightweight, dummy library into the active data folder for UI testing.
